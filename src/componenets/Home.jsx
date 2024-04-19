@@ -22,6 +22,9 @@ function Home() {
   const [msg, setMsg] = useState(cookies.get("msg") ? cookies.get("msg") : "");
   const [encode, setEncode] = useState(true);
   const [data, setData] = useState([]);
+  const [file, setFile] = useState();
+
+  const [serverStatus, setServerStatus] = useState("Server Down");
 
   const code = new Code();
 
@@ -39,10 +42,32 @@ function Home() {
         return;
       }
       setData(await response.json());
+      setServerStatus("Server Up");
     }
     fetchData();
     return;
   });
+
+  const addListItem = async (item) => {
+    try {
+      const response = await fetch(
+        `https://sample-website-server.onrender.com/lists/`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ code: item }),
+        }
+      );
+      if (!response.ok) {
+        console.error(`A error has occurred: ${response.statusText}`);
+        return;
+      }
+    } catch (e) {
+      console.error("Fetch error: ", e);
+    }
+  };
 
   const deleteListItem = async (id) => {
     try {
@@ -61,13 +86,37 @@ function Home() {
     }
   };
 
-  const handleSubmit = async (e) => {
+  const handleFormSubmit = async (e) => {
     e.preventDefault();
 
-    if (input.length < 4) {
-      setInput("");
-      return;
-    }
+    if (!file) return;
+
+    const reader = new FileReader();
+    let temp = [];
+    reader.readAsText(file);
+
+    new Promise((resolve, reject) => {
+      reader.onload = async (event) =>
+        event.target.result.split(/\r?\n/).map((val) => {
+          val = val.replace(/\D/g, "");
+          if (val.length < 4) return;
+          val = val.slice(0, 4);
+          temp.push(val);
+          resolve(temp);
+        });
+
+      reader.onerror = (error) => reject(error);
+    }).then(() => {
+      deleteAll();
+      temp.map((coded) => {
+        console.log(coded);
+        addListItem(coded);
+      });
+    });
+  };
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
 
     const coded = encode ? code.Encode(input) : code.Decode(input);
 
@@ -96,8 +145,23 @@ function Home() {
     setInput("");
   };
 
+  const copyText = async () => {
+    let temp = "";
+    data.map((val) => {
+      temp += val.code + " ";
+    });
+    await navigator.clipboard.writeText(temp);
+  };
+
+  const deleteAll = async () => {
+    data.map((obj) => {
+      deleteListItem(obj._id);
+    });
+  };
+
   return (
     <>
+      {serverStatus} <br />
       {msg}
       <div>
         <form onSubmit={handleSubmit}>
@@ -108,10 +172,21 @@ function Home() {
           />
           <input type="submit" value="SUBMIT" />
         </form>
+        <form onSubmit={handleFormSubmit}>
+          <input
+            type="file"
+            onChange={(e) => {
+              setFile(e.target.files[0]);
+            }}
+          />
+          <input type="submit" value="Upload" />
+        </form>
       </div>
+      <button onClick={copyText}>Copy</button>
       <button onClick={() => setEncode(!encode)}>
         {encode ? "Encode" : "Decode"}
       </button>
+      <button onClick={deleteAll}>Clear</button>
       <div>
         <ul>
           {data.map((obj) => (
